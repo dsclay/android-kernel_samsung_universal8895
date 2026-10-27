@@ -67,6 +67,22 @@ jobs:
           $M olddefconfig
           grep -E "^CONFIG_(CPU_FREQ_GOV_SCHEDUTIL|SCHED_TUNE|CPU_FREQ_DEFAULT_GOV_[A-Z]+)=" out/.config
 
+      - name: Prepare aarch64 tools for clang
+        run: |
+          set -e
+          # The kernel Makefile makes clang use the GNU assembler found next to
+          # $(CROSS_COMPILE)elfedit. Put the arm64 tools first on PATH under
+          # both their prefixed and plain names so clang finds the arm64 "as".
+          D="$HOME/a64/bin"
+          mkdir -p "$D"
+          for t in /usr/bin/aarch64-linux-gnu-*; do ln -sf "$t" "$D/$(basename "$t")"; done
+          for t in as ld ld.bfd ar nm objcopy objdump strip readelf; do
+            ln -sf "/usr/bin/aarch64-linux-gnu-$t" "$D/$t"
+          done
+          echo "$D" >> "$GITHUB_PATH"
+          "$D/as" --version | head -1
+          which aarch64-linux-gnu-elfedit || true
+
       - name: Build Kernel
         run: |
           make ARCH=arm64 O=out CC=clang-12 CROSS_COMPILE=aarch64-linux-gnu- \
