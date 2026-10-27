@@ -1,0 +1,84 @@
+name: Build greatlte kernel (4.4.302)
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Which kernel to build"
+        required: true
+        default: stock
+        type: choice
+        options:
+          - stock
+          - schedutil-available
+          - schedutil-default
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev make ccache \
+            gcc-aarch64-linux-gnu clang-12 lld-12 llvm-12 dwarves
+
+      - name: Configure Kernel
+        env:
+          VARIANT: ${{ github.event.inputs.variant }}
+        run: |
+          set -e
+          echo "Building variant: $VARIANT"
+          M="make ARCH=arm64 O=out CC=clang-12 CROSS_COMPILE=aarch64-linux-gnu- CLANG_TRIPLE=aarch64-linux-gnu- HOSTCFLAGS=-fcommon"
+          $M exynos8895-greatlte_defconfig
+          case "$VARIANT" in
+            stock)
+              ./scripts/config --file out/.config \
+                --disable CPU_FREQ_GOV_SCHEDUTIL \
+                --disable CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
+                --disable SCHED_TUNE \
+                --enable CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+              ;;
+            schedutil-available)
+              ./scripts/config --file out/.config \
+                --enable CPU_FREQ_GOV_SCHEDUTIL \
+                --enable SCHED_TUNE \
+                --disable CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
+                --enable CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+              ;;
+            schedutil-default)
+              ./scripts/config --file out/.config \
+                --enable CPU_FREQ_GOV_SCHEDUTIL \
+                --enable CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
+                --disable CPU_FREQ_DEFAULT_GOV_INTERACTIVE \
+                --disable CPU_FREQ_DEFAULT_GOV_PERFORMANCE \
+                --disable CPU_FREQ_DEFAULT_GOV_POWERSAVE \
+                --disable CPU_FREQ_DEFAULT_GOV_USERSPACE \
+                --disable CPU_FREQ_DEFAULT_GOV_ONDEMAND \
+                --disable CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
+              ;;
+            *)
+              echo "unknown variant: $VARIANT"
+              exit 1
+              ;;
+          esac
+          $M olddefconfig
+          grep -E "^CONFIG_(CPU_FREQ_GOV_SCHEDUTIL|SCHED_TUNE|CPU_FREQ_DEFAULT_GOV_[A-Z]+)=" out/.config
+
+      - name: Build Kernel
+        run: |
+          make ARCH=arm64 O=out CC=clang-12 CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- HOSTCFLAGS=-fcommon KCFLAGS="-w" \
+            -j$(nproc) Image dtbs
+          ls -l out/arch/arm64/boot/Image
+          grep -a -o -m1 'Linux version [ -~]*' out/arch/arm64/boot/Image | head -1
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: greatlte-4.4.302-${{ github.event.inputs.variant }}
+          path: |
+            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/dts/exynos/*.dtb
