@@ -1496,6 +1496,9 @@ unsigned long arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 	return SCHED_CAPACITY_SCALE;
 #endif
 }
+#endif
+
+#ifndef arch_scale_freq_invariant
 #define arch_scale_freq_invariant()    (true)
 #endif
 
