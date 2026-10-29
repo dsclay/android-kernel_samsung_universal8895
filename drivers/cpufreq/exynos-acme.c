@@ -1043,6 +1043,13 @@ static __init int init_pm_qos(struct exynos_cpufreq_domain *domain,
 	pm_qos_add_request(&domain->max_qos_req,
 			domain->pm_qos_max_class, domain->max_freq);
 
+	if (domain->cap_freq && domain->cap_freq < domain->max_freq) {
+		pm_qos_add_request(&domain->cap_qos_req,
+				domain->pm_qos_max_class, domain->cap_freq);
+		pr_info("ACME: cpus %*pbl max freq capped to %u kHz\n",
+			cpumask_pr_args(&domain->cpus), domain->cap_freq);
+	}
+
 	set_boot_qos(domain, dn);
 
 	return 0;
@@ -1216,7 +1223,7 @@ static __init unsigned int acme_build_cap(struct exynos_cpufreq_domain *domain)
 static __init int init_domain(struct exynos_cpufreq_domain *domain,
 					struct device_node *dn)
 {
-	unsigned int val, cap;
+	unsigned int val;
 	int ret;
 
 	mutex_init(&domain->lock);
@@ -1236,12 +1243,9 @@ static __init int init_domain(struct exynos_cpufreq_domain *domain,
 	if (!of_property_read_u32(dn, "min-freq", &val))
 		domain->min_freq = max(domain->min_freq, val);
 
-	cap = acme_build_cap(domain);
-	if (cap && cap >= domain->min_freq) {
-		domain->max_freq = min(domain->max_freq, cap);
-		pr_info("ACME: cpus %*pbl max freq capped to %u kHz\n",
-			cpumask_pr_args(&domain->cpus), domain->max_freq);
-	}
+	domain->cap_freq = acme_build_cap(domain);
+	if (domain->cap_freq && domain->cap_freq < domain->min_freq)
+		domain->cap_freq = 0;
 
 	domain->boot_freq = cal_dfs_get_boot_freq(domain->cal_id);
 	domain->resume_freq = cal_dfs_get_resume_freq(domain->cal_id);
@@ -1279,12 +1283,6 @@ static __init int init_domain(struct exynos_cpufreq_domain *domain,
 				goto init_table;
 			}
 		}
-
-		/* keep turbo/boost levels under the build-time cap too */
-		if (cap && cap >= domain->min_freq)
-			for (i = 0; i < cpu_count; i++)
-				domain->boost_max_freqs[i] =
-					min(domain->boost_max_freqs[i], cap);
 
 		/* change domain->max_freq to maximum level in boost table */
 		domain->max_freq = max(domain->max_freq, domain->boost_max_freqs[0]);

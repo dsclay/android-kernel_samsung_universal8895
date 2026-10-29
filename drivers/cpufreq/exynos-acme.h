@@ -55,6 +55,8 @@ struct exynos_cpufreq_domain {
 	unsigned int			pm_qos_max_class;
 	struct pm_qos_request		min_qos_req;
 	struct pm_qos_request		max_qos_req;
+	struct pm_qos_request		cap_qos_req;
+	unsigned int			cap_freq;
 	struct pm_qos_request		user_min_qos_req;
 	struct pm_qos_request		user_max_qos_req;
 	struct pm_qos_request		user_min_qos_wo_boost_req;
