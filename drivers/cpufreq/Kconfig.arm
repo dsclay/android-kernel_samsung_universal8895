@@ -265,6 +265,16 @@ config ARM_EXYNOS_ACME
 
 	  If in doubt, say N.
 
+config ARM_EXYNOS_ACME_LITTLE_MAX_FREQ
+	int "Max frequency cap for the little cluster in kHz (0 = no cap)"
+	depends on ARM_EXYNOS_ACME
+	default 0
+
+config ARM_EXYNOS_ACME_BIG_MAX_FREQ
+	int "Max frequency cap for the big cluster in kHz (0 = no cap)"
+	depends on ARM_EXYNOS_ACME
+	default 0
+
 config ARM_EXYNOS_UFC
 	bool "SAMSUNG EXYNOS UFC(User Frequency Control) driver"
 	depends on ARM_EXYNOS_ACME

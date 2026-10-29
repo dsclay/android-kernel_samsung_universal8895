@@ -12,6 +12,15 @@ on:
           - stock
           - schedutil-available
           - schedutil-default
+      freq_cap:
+        description: "Cap max CPU frequency (needs the freq-cap patch)"
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - balanced
+          - strong
 
 jobs:
   build:
@@ -28,6 +37,7 @@ jobs:
       - name: Configure Kernel
         env:
           VARIANT: ${{ github.event.inputs.variant }}
+          FREQ_CAP: ${{ github.event.inputs.freq_cap }}
         run: |
           set -e
           echo "Building variant: $VARIANT"
@@ -64,7 +74,23 @@ jobs:
               exit 1
               ;;
           esac
+          # kHz caps: big cluster (policy4) / little cluster (policy0)
+          case "$FREQ_CAP" in
+            none) ;;
+            balanced)
+              ./scripts/config --file out/.config \
+                --set-val ARM_EXYNOS_ACME_BIG_MAX_FREQ 1807000 \
+                --set-val ARM_EXYNOS_ACME_LITTLE_MAX_FREQ 1248000
+              ;;
+            strong)
+              ./scripts/config --file out/.config \
+                --set-val ARM_EXYNOS_ACME_BIG_MAX_FREQ 1469000 \
+                --set-val ARM_EXYNOS_ACME_LITTLE_MAX_FREQ 1053000
+              ;;
+            *) echo "unknown freq_cap: $FREQ_CAP"; exit 1 ;;
+          esac
           $M olddefconfig
+          grep -E "^CONFIG_ARM_EXYNOS_ACME_(BIG|LITTLE)_MAX_FREQ=" out/.config
           grep -E "^CONFIG_(CPU_FREQ_GOV_SCHEDUTIL|SCHED_TUNE|CPU_FREQ_DEFAULT_GOV_[A-Z]+)=" out/.config
 
       - name: Prepare aarch64 tools for clang
@@ -94,7 +120,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: greatlte-4.4.302-${{ github.event.inputs.variant }}
+          name: greatlte-4.4.302-${{ github.event.inputs.variant }}-cap-${{ github.event.inputs.freq_cap }}
           path: |
             out/arch/arm64/boot/Image
             out/arch/arm64/boot/dts/exynos/*.dtb

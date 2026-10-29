@@ -1196,10 +1196,27 @@ static int init_dm(struct exynos_cpufreq_domain *domain,
 	return register_exynos_dm_freq_scaler(domain->dm_type, dm_scaler);
 }
 
+/*
+ * Optional build-time maximum frequency cap (kHz) per cluster.
+ * 0 means no cap. CPU0 is in the little cluster, CPU4 in the big one.
+ */
+static __init unsigned int acme_build_cap(struct exynos_cpufreq_domain *domain)
+{
+#ifdef CONFIG_ARM_EXYNOS_ACME_LITTLE_MAX_FREQ
+	if (cpumask_test_cpu(0, &domain->cpus))
+		return CONFIG_ARM_EXYNOS_ACME_LITTLE_MAX_FREQ;
+#endif
+#ifdef CONFIG_ARM_EXYNOS_ACME_BIG_MAX_FREQ
+	if (cpumask_test_cpu(4, &domain->cpus))
+		return CONFIG_ARM_EXYNOS_ACME_BIG_MAX_FREQ;
+#endif
+	return 0;
+}
+
 static __init int init_domain(struct exynos_cpufreq_domain *domain,
 					struct device_node *dn)
 {
-	unsigned int val;
+	unsigned int val, cap;
 	int ret;
 
 	mutex_init(&domain->lock);
@@ -1218,6 +1235,13 @@ static __init int init_domain(struct exynos_cpufreq_domain *domain,
 		domain->max_freq = min(domain->max_freq, val);
 	if (!of_property_read_u32(dn, "min-freq", &val))
 		domain->min_freq = max(domain->min_freq, val);
+
+	cap = acme_build_cap(domain);
+	if (cap && cap >= domain->min_freq) {
+		domain->max_freq = min(domain->max_freq, cap);
+		pr_info("ACME: cpus %*pbl max freq capped to %u kHz\n",
+			cpumask_pr_args(&domain->cpus), domain->max_freq);
+	}
 
 	domain->boot_freq = cal_dfs_get_boot_freq(domain->cal_id);
 	domain->resume_freq = cal_dfs_get_resume_freq(domain->cal_id);
@@ -1255,6 +1279,12 @@ static __init int init_domain(struct exynos_cpufreq_domain *domain,
 				goto init_table;
 			}
 		}
+
+		/* keep turbo/boost levels under the build-time cap too */
+		if (cap && cap >= domain->min_freq)
+			for (i = 0; i < cpu_count; i++)
+				domain->boost_max_freqs[i] =
+					min(domain->boost_max_freqs[i], cap);
 
 		/* change domain->max_freq to maximum level in boost table */
 		domain->max_freq = max(domain->max_freq, domain->boost_max_freqs[0]);
